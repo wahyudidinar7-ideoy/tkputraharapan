@@ -209,22 +209,25 @@ function makeProgramCode(input: string): string {
 function buildSchoolInfoPayload(info: SchoolInfo) {
   const cleanYear = Math.min(2100, Math.max(1900, Math.round(Number(info.foundedYear) || 2016)));
   const cleanWaRaw = info.whatsappRaw.replace(/[^0-9]/g, '').slice(0, 20);
+  const safeWaRaw = cleanWaRaw.length >= 8 ? cleanWaRaw : '6281234567890';
+  const cleanWaDisplay = info.whatsappDisplay.trim().slice(0, 25);
+  const cleanCurriculum = info.curriculum.trim().slice(0, 80);
   const payload: Record<string, unknown> = {
     name: info.name.trim().slice(0, 100),
     shortTagline: info.shortTagline.trim().slice(0, 140),
     npsn: info.npsn.trim().slice(0, 30),
-    accreditation: info.accreditation.trim().slice(0, 60),
-    curriculum: info.curriculum.trim().slice(0, 80),
+    accreditation: info.accreditation.trim().slice(0, 60) || 'A',
+    curriculum: cleanCurriculum.length >= 2 ? cleanCurriculum : 'Kurikulum Merdeka PAUD',
     foundedYear: cleanYear,
-    experienceYears: info.experienceYears.trim().slice(0, 40),
-    studentCount: info.studentCount.trim().slice(0, 40),
-    teacherCount: info.teacherCount.trim().slice(0, 40),
-    ratioText: info.ratioText.trim().slice(0, 30),
+    experienceYears: info.experienceYears.trim().slice(0, 40) || '1 Tahun',
+    studentCount: info.studentCount.trim().slice(0, 40) || '100 Anak',
+    teacherCount: info.teacherCount.trim().slice(0, 40) || '10 Guru',
+    ratioText: info.ratioText.trim().slice(0, 30) || '1 : 10',
     principalName: info.principalName.trim().slice(0, 100),
     principalQuote: info.principalQuote.trim().slice(0, 600),
     address: info.address.trim().slice(0, 300),
-    whatsappRaw: cleanWaRaw.length >= 8 ? cleanWaRaw : '6281234567890',
-    whatsappDisplay: info.whatsappDisplay.trim().slice(0, 25),
+    whatsappRaw: safeWaRaw,
+    whatsappDisplay: cleanWaDisplay.length >= 8 ? cleanWaDisplay : safeWaRaw,
     instagramHandle: info.instagramHandle.trim().slice(0, 60),
     facebookName: info.facebookName.trim().slice(0, 80),
     youtubeName: info.youtubeName.trim().slice(0, 80),
@@ -664,7 +667,19 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Gagal masuk dengan akun Google.');
+      const code = (err as { code?: string })?.code || '';
+      const rawMsg = err instanceof Error ? err.message : '';
+      if (code === 'auth/unauthorized-domain' || rawMsg.includes('unauthorized-domain')) {
+        setAuthError('UNAUTHORIZED_DOMAIN');
+      } else if (code === 'auth/popup-blocked') {
+        setAuthError(
+          'Jendela login Google diblokir oleh browser. Mohon izinkan pop-up untuk situs ini lalu coba lagi.'
+        );
+      } else if (code === 'auth/popup-closed-by-user') {
+        setAuthError('Login dibatalkan sebelum selesai. Silakan klik tombol di bawah untuk mencoba lagi.');
+      } else {
+        setAuthError(rawMsg || 'Gagal masuk dengan akun Google.');
+      }
     }
   };
 
@@ -1376,17 +1391,23 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
       );
       const theme = PROGRAM_THEMES[programForm.themeIndex] || PROGRAM_THEMES[0];
 
+      const feeSummary = programForm.feeSummary.trim().slice(0, 80);
+      const registrationFee = programForm.registrationFee.trim().slice(0, 140);
+      const monthlyFee = programForm.monthlyFee.trim().slice(0, 140);
+
       await setDoc(doc(db, 'site_programs', code), {
         code,
         name: programForm.name.trim().slice(0, 100),
         ageRange: programForm.ageRange.trim().slice(0, 60),
-        scheduleHours: programForm.scheduleHours.trim().slice(0, 100) || 'Senin - Jumat',
+        scheduleHours:
+          programForm.scheduleHours.trim().length >= 2
+            ? programForm.scheduleHours.trim().slice(0, 100)
+            : 'Senin - Jumat',
         maxPerClass,
         defaultEnrolled,
-        feeSummary: programForm.feeSummary.trim().slice(0, 80) || 'Hubungi Kami',
-        registrationFee:
-          programForm.registrationFee.trim().slice(0, 140) || 'Gratis Formulir',
-        monthlyFee: programForm.monthlyFee.trim().slice(0, 140) || 'Hubungi Kami',
+        feeSummary: feeSummary.length >= 2 ? feeSummary : 'Hubungi Kami',
+        registrationFee: registrationFee.length >= 2 ? registrationFee : 'Gratis Formulir',
+        monthlyFee: monthlyFee.length >= 2 ? monthlyFee : 'Hubungi Kami',
         accentBg: theme.accentBg,
         accentBorder: theme.accentBorder,
         buttonBg: theme.buttonBg,
@@ -1638,7 +1659,30 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
                 Silakan masuk dengan akun Google admin resmi sekolah untuk menambah, mengedit, atau
                 menghapus data PPDB dan konten website.
               </p>
-              {authError && <p className="text-xs font-bold text-rose-600 mb-4">{authError}</p>}
+              {authError === 'UNAUTHORIZED_DOMAIN' ? (
+                <div className="mb-5 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-left text-xs text-rose-900 space-y-2">
+                  <p className="font-bold">
+                    Domain saat ini belum terdaftar di Authorized Domains Firebase Auth:
+                  </p>
+                  <p className="font-mono bg-white px-2.5 py-1.5 rounded-lg border border-rose-200 break-all select-all">
+                    {typeof window !== 'undefined' ? window.location.hostname : ''}
+                  </p>
+                  <p className="leading-relaxed">
+                    Jika login masih tertolak dari domain ini, buka{' '}
+                    <a
+                      href="https://console.firebase.google.com/project/careful-eon-jbcxw/authentication/settings"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline font-bold text-rose-800"
+                    >
+                      Firebase Console → Authentication → Settings → Authorized domains
+                    </a>{' '}
+                    lalu klik <strong>Add domain</strong> untuk menambahkan domain di atas.
+                  </p>
+                </div>
+              ) : (
+                authError && <p className="text-xs font-bold text-rose-600 mb-4">{authError}</p>
+              )}
               <button
                 type="button"
                 onClick={handleAdminSignIn}
