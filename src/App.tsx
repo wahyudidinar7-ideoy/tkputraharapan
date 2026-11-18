@@ -27,7 +27,7 @@ import {
   type TestimonialItem,
   type TimelineStep,
 } from './data/schoolData';
-import { checkAdminSession, fetchSiteData } from './lib/api';
+import { fetchAdminSessionStatus, fetchSiteData, loginAdmin } from './lib/api';
 
 const DEFAULT_QUOTAS: QuotaMap = PROGRAMS.reduce<QuotaMap>((acc, p) => {
   acc[p.code] = {
@@ -54,6 +54,7 @@ export default function App() {
   // Admin state & modal controls
   const [authReady, setAuthReady] = useState(false);
   const [isAdminUser, setIsAdminUser] = useState(false);
+  const [pinRequired, setPinRequired] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminIntent, setAdminIntent] = useState<AdminOpenIntent | null>(null);
 
@@ -83,10 +84,14 @@ export default function App() {
 
   useEffect(() => {
     void refreshSiteData();
-    void checkAdminSession().then((authenticated) => {
-      setIsAdminUser(authenticated);
-      setAuthReady(true);
-    });
+    void fetchAdminSessionStatus()
+      .then((status) => {
+        setIsAdminUser(status.authenticated);
+        setPinRequired(status.pinRequired);
+      })
+      .finally(() => {
+        setAuthReady(true);
+      });
   }, [refreshSiteData]);
 
   useEffect(() => {
@@ -113,10 +118,23 @@ export default function App() {
     scrollToSection('ppdb');
   }, [scrollToSection]);
 
-  const openAdmin = useCallback((intent?: AdminOpenIntent) => {
-    setAdminIntent(intent ?? { tab: 'pendaftar', mode: 'list' });
-    setAdminOpen(true);
-  }, []);
+  const openAdmin = useCallback(
+    (intent?: AdminOpenIntent) => {
+      setAdminIntent(intent ?? { tab: 'pendaftar', mode: 'list' });
+      setAdminOpen(true);
+      if (!isAdminUser && !pinRequired) {
+        void loginAdmin('')
+          .then((res) => {
+            setPinRequired(res.pinRequired);
+            setIsAdminUser(true);
+          })
+          .catch(() => {
+            setPinRequired(true);
+          });
+      }
+    },
+    [isAdminUser, pinRequired]
+  );
 
   return (
     <ErrorBoundary>
@@ -195,7 +213,9 @@ export default function App() {
           onClose={() => setAdminOpen(false)}
           authReady={authReady}
           isAdminUser={isAdminUser}
+          pinRequired={pinRequired}
           onAuthChange={setIsAdminUser}
+          onPinRequiredChange={setPinRequired}
           onDataChanged={refreshSiteData}
           schoolInfo={schoolInfo}
           advantages={advantages}

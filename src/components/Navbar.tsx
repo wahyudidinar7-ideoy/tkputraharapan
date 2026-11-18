@@ -93,7 +93,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             type="button"
             onClick={onOpenAdmin}
-            className="hidden sm:inline-flex px-3.5 py-2.5 rounded-full bg-white hover:bg-amber-50 text-slate-800 font-bold text-xs sm:text-sm border-2 border-amber-300 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            className="inline-flex items-center px-2.5 sm:px-3.5 py-2 sm:py-2.5 rounded-full bg-white hover:bg-amber-50 text-slate-800 font-bold text-xs sm:text-sm border-2 border-amber-300 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             {isAdminUser ? '⚙️ Kelola Admin' : '🔐 Admin'}
           </button>

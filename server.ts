@@ -99,7 +99,7 @@ function createInitialDb(): SchoolDatabase {
     testimonials: TESTIMONIALS.map((t) => ({ ...t })),
     faqs: FAQS.map((f) => ({ ...f })),
     registrations: [],
-    adminPasscode: process.env.ADMIN_PIN || 'admin123',
+    adminPasscode: process.env.ADMIN_PIN || '',
     sessions: [],
   };
 }
@@ -135,7 +135,7 @@ function loadDb(): SchoolDatabase {
       faqs: Array.isArray(parsed.faqs) ? parsed.faqs : defaults.faqs,
       registrations: Array.isArray(parsed.registrations) ? parsed.registrations : [],
       adminPasscode:
-        typeof parsed.adminPasscode === 'string' && parsed.adminPasscode.trim().length >= 3
+        typeof parsed.adminPasscode === 'string'
           ? parsed.adminPasscode
           : defaults.adminPasscode,
       sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
@@ -307,13 +307,16 @@ async function startServer() {
   app.get('/api/admin/session', (req, res) => {
     const db = loadDb();
     const token = extractBearerToken(req);
-    res.json({ authenticated: isTokenValid(db, token) });
+    res.json({
+      authenticated: isTokenValid(db, token),
+      pinRequired: db.adminPasscode.length > 0,
+    });
   });
 
   app.post('/api/admin/login', (req, res) => {
     const passcode = String(req.body?.passcode || '').trim();
     const db = loadDb();
-    if (!passcode || passcode !== db.adminPasscode) {
+    if (db.adminPasscode.length > 0 && passcode !== db.adminPasscode) {
       res.status(401).json({ error: 'PIN Admin tidak sesuai. Silakan periksa kembali.' });
       return;
     }
@@ -323,7 +326,7 @@ async function startServer() {
       db.sessions = db.sessions.slice(-25);
     }
     saveDb(db);
-    res.json({ token });
+    res.json({ token, pinRequired: db.adminPasscode.length > 0 });
   });
 
   app.post('/api/admin/logout', (req, res) => {
@@ -401,9 +404,13 @@ async function startServer() {
       heroImage: String(info.heroImage || '').trim().slice(0, 400) || undefined,
     };
 
-    const newPasscode = String(info.newAdminPasscode || '').trim();
-    if (newPasscode.length >= 4) {
-      db.adminPasscode = newPasscode;
+    if (info.clearAdminPasscode === true) {
+      db.adminPasscode = '';
+    } else {
+      const newPasscode = String(info.newAdminPasscode || '').trim();
+      if (newPasscode.length >= 4) {
+        db.adminPasscode = newPasscode;
+      }
     }
 
     // Sync principal profile in teachers list
@@ -419,7 +426,7 @@ async function startServer() {
     }
 
     saveDb(db);
-    res.json({ schoolInfo: db.schoolInfo });
+    res.json({ schoolInfo: db.schoolInfo, pinRequired: db.adminPasscode.length > 0 });
   });
 
   // Admin: Quotas

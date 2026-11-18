@@ -145,26 +145,38 @@ export async function submitPpdbRegistration(payload: {
   });
 }
 
-export async function checkAdminSession(): Promise<boolean> {
-  if (!getAdminToken()) return false;
+export async function fetchAdminSessionStatus(): Promise<{
+  authenticated: boolean;
+  pinRequired: boolean;
+}> {
   try {
-    const res = await requestJson<{ authenticated: boolean }>('/api/admin/session');
-    if (!res.authenticated) {
+    const res = await requestJson<{ authenticated: boolean; pinRequired?: boolean }>(
+      '/api/admin/session'
+    );
+    if (!res.authenticated && getAdminToken()) {
       clearAdminToken();
     }
-    return Boolean(res.authenticated);
+    return {
+      authenticated: Boolean(res.authenticated),
+      pinRequired: Boolean(res.pinRequired),
+    };
   } catch {
-    return false;
+    return { authenticated: false, pinRequired: false };
   }
 }
 
-export async function loginAdmin(passcode: string): Promise<string> {
-  const res = await requestJson<{ token: string }>('/api/admin/login', {
+export async function checkAdminSession(): Promise<boolean> {
+  const status = await fetchAdminSessionStatus();
+  return status.authenticated;
+}
+
+export async function loginAdmin(passcode = ''): Promise<{ token: string; pinRequired: boolean }> {
+  const res = await requestJson<{ token: string; pinRequired?: boolean }>('/api/admin/login', {
     method: 'POST',
     body: JSON.stringify({ passcode }),
   });
   setAdminToken(res.token);
-  return res.token;
+  return { token: res.token, pinRequired: Boolean(res.pinRequired) };
 }
 
 export async function logoutAdmin(): Promise<void> {
@@ -178,8 +190,8 @@ export async function logoutAdmin(): Promise<void> {
 }
 
 export async function saveSchoolInfoApi(
-  payload: SchoolInfo & { newAdminPasscode?: string }
-): Promise<{ schoolInfo: SchoolInfo }> {
+  payload: SchoolInfo & { newAdminPasscode?: string; clearAdminPasscode?: boolean }
+): Promise<{ schoolInfo: SchoolInfo; pinRequired?: boolean }> {
   return requestJson('/api/admin/school-info', {
     method: 'PUT',
     body: JSON.stringify(payload),

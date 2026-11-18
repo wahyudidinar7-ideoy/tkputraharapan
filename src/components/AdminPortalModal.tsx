@@ -79,7 +79,9 @@ interface AdminPortalModalProps {
   onClose: () => void;
   authReady: boolean;
   isAdminUser: boolean;
+  pinRequired?: boolean;
   onAuthChange: (isAdmin: boolean) => void;
+  onPinRequiredChange?: (required: boolean) => void;
   onDataChanged: () => Promise<void>;
   schoolInfo: SchoolInfo;
   advantages: AdvantageItem[];
@@ -176,7 +178,9 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   onClose,
   authReady,
   isAdminUser,
+  pinRequired = false,
   onAuthChange,
+  onPinRequiredChange,
   onDataChanged,
   schoolInfo,
   advantages,
@@ -193,6 +197,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   const [adminPin, setAdminPin] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [clearPinChecked, setClearPinChecked] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [newAdminPasscode, setNewAdminPasscode] = useState('');
@@ -439,6 +444,30 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   };
 
   useEffect(() => {
+    if (!isOpen || !authReady || isAdminUser || pinRequired) {
+      return;
+    }
+    let cancelled = false;
+    setLoggingIn(true);
+    void loginAdmin('')
+      .then((res) => {
+        if (cancelled) return;
+        onPinRequiredChange?.(res.pinRequired);
+        onAuthChange(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        onPinRequiredChange?.(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoggingIn(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, authReady, isAdminUser, pinRequired, onAuthChange, onPinRequiredChange]);
+
+  useEffect(() => {
     if (!isOpen || !authReady || !isAdminUser) {
       setRegistrations([]);
       return;
@@ -450,14 +479,15 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
-    if (!adminPin.trim()) {
+    if (pinRequired && !adminPin.trim()) {
       setAuthError('Masukkan PIN Admin terlebih dahulu.');
       return;
     }
     setLoggingIn(true);
     try {
-      await loginAdmin(adminPin.trim());
+      const res = await loginAdmin(adminPin.trim());
       setAdminPin('');
+      onPinRequiredChange?.(res.pinRequired);
       onAuthChange(true);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'PIN Admin tidak sesuai.');
@@ -632,21 +662,27 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
       return;
     }
 
-    if (newAdminPasscode.trim().length > 0 && newAdminPasscode.trim().length < 4) {
+    if (!clearPinChecked && newAdminPasscode.trim().length > 0 && newAdminPasscode.trim().length < 4) {
       setActionMsg('PIN Admin baru minimal 4 karakter.');
       return;
     }
 
     setSaving(true);
     try {
-      await saveSchoolInfoApi({
+      const res = await saveSchoolInfoApi({
         ...schoolForm,
-        ...(newAdminPasscode.trim().length >= 4
-          ? { newAdminPasscode: newAdminPasscode.trim() }
-          : {}),
+        ...(clearPinChecked
+          ? { clearAdminPasscode: true }
+          : newAdminPasscode.trim().length >= 4
+            ? { newAdminPasscode: newAdminPasscode.trim() }
+            : {}),
       });
       await onDataChanged();
+      if (typeof res.pinRequired === 'boolean') {
+        onPinRequiredChange?.(res.pinRequired);
+      }
       setNewAdminPasscode('');
+      setClearPinChecked(false);
       setActionMsg('Identitas TK & Kepala Sekolah berhasil diperbarui ke seluruh website!');
     } catch (err) {
       handleApiError(err, 'Gagal memperbarui identitas sekolah.');
@@ -1290,7 +1326,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6"
+      className="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-label="Panel Admin Sekolah"
@@ -1325,9 +1361,9 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
 
         {/* Body */}
         <div className="p-5 sm:p-6 overflow-y-auto flex-1">
-          {!authReady ? (
+          {!authReady || (!isAdminUser && !pinRequired) ? (
             <p className="text-center py-12 text-slate-600 font-semibold">
-              Memeriksa sesi admin...
+              Membuka Panel Admin...
             </p>
           ) : !isAdminUser ? (
             <form onSubmit={handleAdminLogin} className="max-w-md mx-auto py-8 text-center">
@@ -1362,10 +1398,6 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
                   {loggingIn ? 'Memeriksa PIN...' : 'Masuk ke Panel Admin'}
                 </button>
               </div>
-              <p className="mt-4 text-xs font-semibold text-slate-500">
-                PIN default awal: <code className="px-2 py-0.5 rounded bg-amber-100 text-slate-900 font-bold">admin123</code>{' '}
-                (dapat diubah di menu Identitas)
-              </p>
             </form>
           ) : (
             <div className="space-y-5">
@@ -2011,21 +2043,33 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="p-4 rounded-2xl bg-[#fffbeb] border border-amber-200 space-y-2">
+                  <div className="p-4 rounded-2xl bg-[#fffbeb] border border-amber-200 space-y-2.5">
                     <h4 className="font-display font-bold text-slate-900">
-                      Keamanan Panel Admin
+                      Keamanan Panel Admin ({pinRequired ? 'Terkunci PIN' : 'Buka Langsung 1 Klik'})
                     </h4>
                     <label className="block text-xs font-bold text-slate-700">
-                      Ubah PIN Admin (opsional, min. 4 karakter — kosongkan jika tidak ingin mengubah)
+                      Pasang / Ubah PIN Admin (opsional, min. 4 karakter — kosongkan jika ingin tetap buka langsung 1 klik)
                     </label>
                     <input
                       type="password"
                       maxLength={40}
+                      disabled={clearPinChecked}
                       value={newAdminPasscode}
                       onChange={(e) => setNewAdminPasscode(e.target.value)}
                       placeholder="PIN Admin baru (opsional)"
-                      className="w-full sm:max-w-xs px-3.5 py-2.5 rounded-xl bg-white border border-amber-200 text-sm"
+                      className="w-full sm:max-w-xs px-3.5 py-2.5 rounded-xl bg-white border border-amber-200 text-sm disabled:opacity-50"
                     />
+                    {pinRequired && (
+                      <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer pt-1">
+                        <input
+                          type="checkbox"
+                          checked={clearPinChecked}
+                          onChange={(e) => setClearPinChecked(e.target.checked)}
+                          className="w-4 h-4 accent-[#ea580c]"
+                        />
+                        <span>Nonaktifkan PIN (kembalikan ke buka Admin langsung 1 klik)</span>
+                      </label>
+                    )}
                   </div>
 
                   <div className="flex justify-end">
