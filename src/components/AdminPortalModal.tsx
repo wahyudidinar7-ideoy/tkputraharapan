@@ -11,39 +11,37 @@ import {
   UserCheck,
   X,
 } from 'lucide-react';
-import { signInWithPopup, signOut, type User } from 'firebase/auth';
 import {
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-  Timestamp,
-  updateDoc,
-  writeBatch,
-} from 'firebase/firestore';
-import {
-  auth,
-  db,
-  googleProvider,
-  handleFirestoreError,
-  OperationType,
+  ApiError,
+  deleteAdvantageApi,
+  deleteFaqApi,
+  deleteGalleryApi,
+  deleteProgramApi,
+  deleteRegistrationApi,
+  deleteTeacherApi,
+  deleteTestimonialApi,
+  deleteTimelineApi,
+  fetchRegistrationsApi,
+  loginAdmin,
+  logoutAdmin,
   PPDB_VALIDATION,
-} from '../lib/firebase';
+  saveAdvantageApi,
+  saveFaqApi,
+  saveGalleryApi,
+  saveProgramApi,
+  saveQuotasApi,
+  saveRegistrationApi,
+  saveSchoolInfoApi,
+  saveTeacherApi,
+  saveTestimonialApi,
+  saveTimelineApi,
+  type PpdbRegistrationRecord,
+  type RegistrationStatus,
+} from '../lib/api';
 import {
-  DAILY_TIMELINE,
-  FAQS,
-  GALLERY_ITEMS,
   HERO_IMAGES,
   LOCAL_SCHOOL_PHOTOS,
   PROGRAMS,
-  TEACHERS,
-  TESTIMONIALS,
-  WHY_CHOOSE_US,
   type AdvantageItem,
   type FaqItem,
   type GalleryItem,
@@ -56,27 +54,7 @@ import {
 } from '../data/schoolData';
 import type { QuotaMap } from './ProgramsAndTimeline';
 
-export type RegistrationStatus = 'menunggu' | 'jadwal_trial' | 'diterima' | 'batal';
-
-export interface PpdbRegistrationRecord {
-  id: string;
-  registrationCode: string;
-  childName: string;
-  birthDate: string;
-  gender: 'Laki-laki' | 'Perempuan';
-  programCode: ProgramCode;
-  fatherName: string;
-  motherName: string;
-  parentWhatsapp: string;
-  address: string;
-  previousSchool?: string;
-  notes?: string;
-  wantsTrial: boolean;
-  status: RegistrationStatus;
-  trialDate?: string;
-  adminNotes?: string;
-  createdAt?: Timestamp | null;
-}
+export type { PpdbRegistrationRecord, RegistrationStatus };
 
 export type AdminTab =
   | 'identitas'
@@ -100,8 +78,9 @@ interface AdminPortalModalProps {
   isOpen: boolean;
   onClose: () => void;
   authReady: boolean;
-  currentUser: User | null;
   isAdminUser: boolean;
+  onAuthChange: (isAdmin: boolean) => void;
+  onDataChanged: () => Promise<void>;
   schoolInfo: SchoolInfo;
   advantages: AdvantageItem[];
   programs: SchoolProgram[];
@@ -182,20 +161,6 @@ function getStatusBadge(status: RegistrationStatus) {
   }
 }
 
-function generateRegistrationCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let suffix = '';
-  for (let i = 0; i < 5; i += 1) {
-    suffix += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return `PPDB-2026-${suffix}`;
-}
-
-function makeDocId(prefix: string): string {
-  const rand = Math.random().toString(36).slice(2, 8).replace(/[^a-z0-9]/g, 'x');
-  return `${prefix}_${Date.now()}_${rand}`;
-}
-
 function makeProgramCode(input: string): string {
   const cleaned = input
     .toLowerCase()
@@ -206,67 +171,13 @@ function makeProgramCode(input: string): string {
   return `prog_${Date.now().toString(36)}`;
 }
 
-function buildSchoolInfoPayload(info: SchoolInfo) {
-  const cleanYear = Math.min(2100, Math.max(1900, Math.round(Number(info.foundedYear) || 2016)));
-  const cleanWaRaw = info.whatsappRaw.replace(/[^0-9]/g, '').slice(0, 20);
-  const safeWaRaw = cleanWaRaw.length >= 8 ? cleanWaRaw : '6281234567890';
-  const cleanWaDisplay = info.whatsappDisplay.trim().slice(0, 25);
-  const cleanCurriculum = info.curriculum.trim().slice(0, 80);
-  const payload: Record<string, unknown> = {
-    name: info.name.trim().slice(0, 100),
-    shortTagline: info.shortTagline.trim().slice(0, 140),
-    npsn: info.npsn.trim().slice(0, 30),
-    accreditation: info.accreditation.trim().slice(0, 60) || 'A',
-    curriculum: cleanCurriculum.length >= 2 ? cleanCurriculum : 'Kurikulum Merdeka PAUD',
-    foundedYear: cleanYear,
-    experienceYears: info.experienceYears.trim().slice(0, 40) || '1 Tahun',
-    studentCount: info.studentCount.trim().slice(0, 40) || '100 Anak',
-    teacherCount: info.teacherCount.trim().slice(0, 40) || '10 Guru',
-    ratioText: info.ratioText.trim().slice(0, 30) || '1 : 10',
-    principalName: info.principalName.trim().slice(0, 100),
-    principalQuote: info.principalQuote.trim().slice(0, 600),
-    address: info.address.trim().slice(0, 300),
-    whatsappRaw: safeWaRaw,
-    whatsappDisplay: cleanWaDisplay.length >= 8 ? cleanWaDisplay : safeWaRaw,
-    instagramHandle: info.instagramHandle.trim().slice(0, 60),
-    facebookName: info.facebookName.trim().slice(0, 80),
-    youtubeName: info.youtubeName.trim().slice(0, 80),
-    email: info.email.trim().slice(0, 120),
-    schoolHoursA: info.schoolHoursA.trim().slice(0, 120),
-    schoolHoursB: info.schoolHoursB.trim().slice(0, 120),
-    serviceHours: info.serviceHours.trim().slice(0, 140),
-    ppdbDeadlineIso: info.ppdbDeadlineIso.trim().slice(0, 40),
-    youtubeVideoId: info.youtubeVideoId.trim().slice(0, 60),
-    mapsEmbedUrl: info.mapsEmbedUrl.trim().slice(0, 500),
-    updatedAt: serverTimestamp(),
-  };
-  if (info.principalPhoto && info.principalPhoto.trim().length > 0) {
-    payload.principalPhoto = info.principalPhoto.trim().slice(0, 400);
-  }
-  if (info.videoThumbnail && info.videoThumbnail.trim().length > 0) {
-    payload.videoThumbnail = info.videoThumbnail.trim().slice(0, 400);
-  }
-  if (info.heroBadge && info.heroBadge.trim().length > 0) {
-    payload.heroBadge = info.heroBadge.trim().slice(0, 120);
-  }
-  if (info.heroTitle && info.heroTitle.trim().length > 0) {
-    payload.heroTitle = info.heroTitle.trim().slice(0, 160);
-  }
-  if (info.heroSubtitle && info.heroSubtitle.trim().length > 0) {
-    payload.heroSubtitle = info.heroSubtitle.trim().slice(0, 400);
-  }
-  if (info.heroImage && info.heroImage.trim().length > 0) {
-    payload.heroImage = info.heroImage.trim().slice(0, 400);
-  }
-  return payload;
-}
-
 export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   isOpen,
   onClose,
   authReady,
-  currentUser,
   isAdminUser,
+  onAuthChange,
+  onDataChanged,
   schoolInfo,
   advantages,
   programs,
@@ -279,9 +190,12 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   intent,
 }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('pendaftar');
+  const [adminPin, setAdminPin] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [newAdminPasscode, setNewAdminPasscode] = useState('');
 
   // School Identity & Principal form state
   const [schoolForm, setSchoolForm] = useState<SchoolInfo>(schoolInfo);
@@ -498,189 +412,64 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
     }
   }, [isOpen, intent]);
 
-  // Real-time subscription to ppdb_registrations when authenticated as admin
+  const handleApiError = (err: unknown, fallbackMsg: string) => {
+    if (err instanceof ApiError && err.status === 401) {
+      onAuthChange(false);
+      setAuthError('Sesi admin telah berakhir. Silakan masukkan PIN admin kembali.');
+      setActionMsg(null);
+      return;
+    }
+    setActionMsg(err instanceof Error ? err.message : fallbackMsg);
+  };
+
+  const loadRegistrations = async () => {
+    setRegLoading(true);
+    setRegError(null);
+    try {
+      const list = await fetchRegistrationsApi();
+      setRegistrations(list);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onAuthChange(false);
+      }
+      setRegError(err instanceof Error ? err.message : 'Gagal memuat data pendaftaran dari server.');
+    } finally {
+      setRegLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if (!isOpen || !authReady || !currentUser || !isAdminUser) {
+    if (!isOpen || !authReady || !isAdminUser) {
       setRegistrations([]);
       return;
     }
+    void loadRegistrations();
+  }, [isOpen, authReady, isAdminUser]);
 
-    setRegLoading(true);
-    setRegError(null);
-
-    const q = query(collection(db, 'ppdb_registrations'), orderBy('createdAt', 'desc'));
-    const unsub = onSnapshot(
-      q,
-      (snapshot) => {
-        const list: PpdbRegistrationRecord[] = snapshot.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            registrationCode: data.registrationCode,
-            childName: data.childName,
-            birthDate: data.birthDate,
-            gender: data.gender,
-            programCode: data.programCode,
-            fatherName: data.fatherName,
-            motherName: data.motherName,
-            parentWhatsapp: data.parentWhatsapp,
-            address: data.address,
-            previousSchool: data.previousSchool,
-            notes: data.notes,
-            wantsTrial: Boolean(data.wantsTrial),
-            status: data.status as RegistrationStatus,
-            trialDate: data.trialDate,
-            adminNotes: data.adminNotes,
-            createdAt: data.createdAt ?? null,
-          };
-        });
-        setRegistrations(list);
-        setRegLoading(false);
-      },
-      (error) => {
-        setRegLoading(false);
-        setRegError('Gagal memuat data pendaftaran dari database.');
-        handleFirestoreError(error, OperationType.LIST, 'ppdb_registrations');
-      }
-    );
-
-    return () => unsub();
-  }, [isOpen, authReady, currentUser, isAdminUser]);
-
-  // Seed helper for public collections if empty in Firestore
-  const ensureCollectionSeeded = async (
-    colName:
-      | 'site_advantages'
-      | 'site_programs'
-      | 'site_timeline'
-      | 'site_teachers'
-      | 'site_gallery'
-      | 'site_testimonials'
-      | 'site_faqs'
-  ) => {
-    const snap = await getDocs(collection(db, colName));
-    if (!snap.empty) return;
-    const batch = writeBatch(db);
-    if (colName === 'site_advantages') {
-      WHY_CHOOSE_US.forEach((a, idx) => {
-        batch.set(doc(db, 'site_advantages', a.id), {
-          emoji: a.emoji,
-          title: a.title,
-          description: a.description,
-          bgClass: a.bgClass,
-          borderClass: a.borderClass,
-          sortOrder: idx,
-          updatedAt: serverTimestamp(),
-        });
-      });
-    } else if (colName === 'site_programs') {
-      PROGRAMS.forEach((p, idx) => {
-        batch.set(doc(db, 'site_programs', p.code), {
-          code: p.code,
-          name: p.name,
-          ageRange: p.ageRange,
-          scheduleHours: p.scheduleHours,
-          maxPerClass: p.maxPerClass,
-          defaultEnrolled: p.defaultEnrolled,
-          feeSummary: p.feeSummary,
-          registrationFee: p.registrationFee,
-          monthlyFee: p.monthlyFee,
-          accentBg: p.accentBg,
-          accentBorder: p.accentBorder,
-          buttonBg: p.buttonBg,
-          emoji: p.emoji,
-          summary: p.summary,
-          highlights: p.highlights,
-          weeklySchedule: p.weeklySchedule,
-          sortOrder: idx,
-          updatedAt: serverTimestamp(),
-        });
-      });
-    } else if (colName === 'site_timeline') {
-      DAILY_TIMELINE.forEach((s, idx) => {
-        const docId = s.id || `step_0${idx + 1}`;
-        batch.set(doc(db, 'site_timeline', docId), {
-          time: s.time,
-          emoji: s.emoji,
-          title: s.title,
-          description: s.description,
-          color: s.color,
-          sortOrder: idx,
-          updatedAt: serverTimestamp(),
-        });
-      });
-    } else if (colName === 'site_teachers') {
-      TEACHERS.forEach((t, idx) => {
-        batch.set(doc(db, 'site_teachers', t.id), {
-          name: t.name,
-          role: t.role,
-          slogan: t.slogan,
-          experience: t.experience,
-          photo: t.photo,
-          badgeColor: t.badgeColor,
-          initials: t.initials,
-          sortOrder: idx,
-          updatedAt: serverTimestamp(),
-        });
-      });
-    } else if (colName === 'site_gallery') {
-      GALLERY_ITEMS.forEach((g, idx) => {
-        batch.set(doc(db, 'site_gallery', g.id), {
-          title: g.title,
-          category: g.category,
-          description: g.description,
-          image: g.image,
-          alt: g.alt,
-          sortOrder: idx,
-          updatedAt: serverTimestamp(),
-        });
-      });
-    } else if (colName === 'site_testimonials') {
-      TESTIMONIALS.forEach((t, idx) => {
-        batch.set(doc(db, 'site_testimonials', t.id), {
-          parentName: t.parentName,
-          childInfo: t.childInfo,
-          rating: t.rating,
-          quote: t.quote,
-          avatarColor: t.avatarColor,
-          initials: t.initials,
-          sortOrder: idx,
-          updatedAt: serverTimestamp(),
-        });
-      });
-    } else if (colName === 'site_faqs') {
-      FAQS.forEach((f, idx) => {
-        batch.set(doc(db, 'site_faqs', f.id), {
-          question: f.question,
-          answer: f.answer,
-          sortOrder: idx,
-          updatedAt: serverTimestamp(),
-        });
-      });
+  // Admin PIN Sign in / out
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    if (!adminPin.trim()) {
+      setAuthError('Masukkan PIN Admin terlebih dahulu.');
+      return;
     }
-    await batch.commit();
+    setLoggingIn(true);
+    try {
+      await loginAdmin(adminPin.trim());
+      setAdminPin('');
+      onAuthChange(true);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'PIN Admin tidak sesuai.');
+    } finally {
+      setLoggingIn(false);
+    }
   };
 
-  // Sign in / out
-  const handleAdminSignIn = async () => {
-    setAuthError(null);
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (err) {
-      const code = (err as { code?: string })?.code || '';
-      const rawMsg = err instanceof Error ? err.message : '';
-      if (code === 'auth/unauthorized-domain' || rawMsg.includes('unauthorized-domain')) {
-        setAuthError('UNAUTHORIZED_DOMAIN');
-      } else if (code === 'auth/popup-blocked') {
-        setAuthError(
-          'Jendela login Google diblokir oleh browser. Mohon izinkan pop-up untuk situs ini lalu coba lagi.'
-        );
-      } else if (code === 'auth/popup-closed-by-user') {
-        setAuthError('Login dibatalkan sebelum selesai. Silakan klik tombol di bawah untuk mencoba lagi.');
-      } else {
-        setAuthError(rawMsg || 'Gagal masuk dengan akun Google.');
-      }
-    }
+  const handleAdminLogout = async () => {
+    await logoutAdmin();
+    onAuthChange(false);
+    setActionMsg(null);
   };
 
   // PPDB CRUD
@@ -762,41 +551,23 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
         address: trimmedAddress.slice(0, PPDB_VALIDATION.addressMax),
         wantsTrial: regForm.wantsTrial,
         status: regForm.status,
-        updatedAt: serverTimestamp(),
+        previousSchool: regForm.previousSchool.trim().slice(0, PPDB_VALIDATION.previousSchoolMax),
+        notes: regForm.notes.trim().slice(0, PPDB_VALIDATION.notesMax),
+        trialDate: regForm.trialDate.trim().slice(0, PPDB_VALIDATION.trialDateMax),
+        adminNotes: regForm.adminNotes.trim().slice(0, PPDB_VALIDATION.adminNotesMax),
       };
-      if (regForm.previousSchool.trim()) {
-        payload.previousSchool = regForm.previousSchool.trim().slice(0, PPDB_VALIDATION.previousSchoolMax);
-      }
-      if (regForm.notes.trim()) {
-        payload.notes = regForm.notes.trim().slice(0, PPDB_VALIDATION.notesMax);
-      }
-      if (regForm.trialDate.trim()) {
-        payload.trialDate = regForm.trialDate.trim().slice(0, PPDB_VALIDATION.trialDateMax);
-      }
-      if (regForm.adminNotes.trim()) {
-        payload.adminNotes = regForm.adminNotes.trim().slice(0, PPDB_VALIDATION.adminNotesMax);
-      }
 
-      if (regFormMode === 'add') {
-        const newId = makeDocId('reg');
-        await setDoc(doc(db, 'ppdb_registrations', newId), {
-          ...payload,
-          registrationCode: generateRegistrationCode(),
-          createdAt: serverTimestamp(),
-        });
-        setActionMsg('Data pendaftar berhasil ditambahkan.');
-      } else if (regFormMode === 'edit' && editingRegId) {
-        await updateDoc(doc(db, 'ppdb_registrations', editingRegId), payload);
-        setActionMsg('Perubahan data pendaftar berhasil disimpan.');
-      }
+      await saveRegistrationApi(regFormMode === 'edit' ? editingRegId : null, payload);
+      await loadRegistrations();
+      setActionMsg(
+        regFormMode === 'add'
+          ? 'Data pendaftar berhasil ditambahkan.'
+          : 'Perubahan data pendaftar berhasil disimpan.'
+      );
       setRegFormMode('closed');
       setEditingRegId(null);
     } catch (err) {
-      handleFirestoreError(
-        err,
-        regFormMode === 'add' ? OperationType.CREATE : OperationType.UPDATE,
-        'ppdb_registrations'
-      );
+      handleApiError(err, 'Gagal menyimpan data pendaftar.');
     } finally {
       setSaving(false);
     }
@@ -805,11 +576,12 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   const handleDeleteReg = async (id: string) => {
     setSaving(true);
     try {
-      await deleteDoc(doc(db, 'ppdb_registrations', id));
+      await deleteRegistrationApi(id);
+      await loadRegistrations();
       setConfirmDeleteKey(null);
       setActionMsg('Data pendaftar berhasil dihapus.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `ppdb_registrations/${id}`);
+      handleApiError(err, 'Gagal menghapus data pendaftar.');
     } finally {
       setSaving(false);
     }
@@ -821,7 +593,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
     setSaving(true);
     setActionMsg(null);
     try {
-      const batch = writeBatch(db);
+      const nextQuotas: Record<string, { capacity: number; enrolledCount: number }> = {};
       programs.forEach((prog) => {
         const entry = quotaDraft[prog.code] ?? {
           capacity: prog.maxPerClass,
@@ -829,17 +601,13 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
         };
         const cap = Math.min(100, Math.max(1, Math.round(entry.capacity)));
         const enr = Math.min(cap, Math.max(0, Math.round(entry.enrolledCount)));
-        batch.set(doc(db, 'ppdb_stats', prog.code), {
-          programCode: prog.code,
-          capacity: cap,
-          enrolledCount: enr,
-          updatedAt: serverTimestamp(),
-        });
+        nextQuotas[prog.code] = { capacity: cap, enrolledCount: enr };
       });
-      await batch.commit();
+      await saveQuotasApi(nextQuotas);
+      await onDataChanged();
       setActionMsg('Kuota kelas berhasil diperbarui.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'ppdb_stats');
+      handleApiError(err, 'Gagal menyimpan kuota kelas.');
     } finally {
       setSaving(false);
     }
@@ -864,31 +632,24 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
       return;
     }
 
+    if (newAdminPasscode.trim().length > 0 && newAdminPasscode.trim().length < 4) {
+      setActionMsg('PIN Admin baru minimal 4 karakter.');
+      return;
+    }
+
     setSaving(true);
     try {
-      const payload = buildSchoolInfoPayload(schoolForm);
-      await setDoc(doc(db, 'site_settings', 'school_info'), payload);
-
-      // Sinkronkan juga profil Kepala Sekolah di koleksi guru agar konsisten
-      const principalTeacher =
-        teachers.find((t) => t.id === 'kepala') ||
-        teachers.find((t) => t.role.toLowerCase().includes('kepala sekolah'));
-      if (principalTeacher) {
-        await ensureCollectionSeeded('site_teachers');
-        const cleanedPrincipal = schoolForm.principalName.trim().slice(0, 100);
-        const teacherUpdates: Record<string, unknown> = {
-          name: cleanedPrincipal,
-          updatedAt: serverTimestamp(),
-        };
-        if (schoolForm.principalPhoto && schoolForm.principalPhoto.trim().length > 0) {
-          teacherUpdates.photo = schoolForm.principalPhoto.trim().slice(0, 400);
-        }
-        await updateDoc(doc(db, 'site_teachers', principalTeacher.id), teacherUpdates);
-      }
-
+      await saveSchoolInfoApi({
+        ...schoolForm,
+        ...(newAdminPasscode.trim().length >= 4
+          ? { newAdminPasscode: newAdminPasscode.trim() }
+          : {}),
+      });
+      await onDataChanged();
+      setNewAdminPasscode('');
       setActionMsg('Identitas TK & Kepala Sekolah berhasil diperbarui ke seluruh website!');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'site_settings/school_info');
+      handleApiError(err, 'Gagal memperbarui identitas sekolah.');
     } finally {
       setSaving(false);
     }
@@ -932,8 +693,6 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
     setSaving(true);
     setActionMsg(null);
     try {
-      await ensureCollectionSeeded('site_teachers');
-      const id = teacherFormMode === 'edit' && editingTeacherId ? editingTeacherId : makeDocId('guru');
       const cleanedName = teacherForm.name.trim().slice(0, 100);
       const cleanedRole = teacherForm.role.trim().slice(0, 80);
       const cleanedPhoto = teacherForm.photo.trim().slice(0, 400) || HERO_IMAGES.team;
@@ -946,7 +705,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
           .join('') ||
         'TK';
 
-      await setDoc(doc(db, 'site_teachers', id), {
+      await saveTeacherApi(teacherFormMode === 'edit' ? editingTeacherId : null, {
         name: cleanedName,
         role: cleanedRole,
         slogan: teacherForm.slogan.trim().slice(0, 200) || '"Mendidik dengan penuh cinta."',
@@ -954,28 +713,14 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
         photo: cleanedPhoto,
         badgeColor: teacherForm.badgeColor || 'bg-[#fef08a]',
         initials: initials.slice(0, 4),
-        sortOrder:
-          teacherFormMode === 'edit'
-            ? Math.max(0, teachers.findIndex((t) => t.id === id))
-            : teachers.length,
-        updatedAt: serverTimestamp(),
       });
-
-      // Jika yang diedit adalah Kepala Sekolah, sinkronkan ke site_settings/school_info
-      if (id === 'kepala' || cleanedRole.toLowerCase().includes('kepala sekolah')) {
-        const syncedPayload = buildSchoolInfoPayload({
-          ...schoolInfo,
-          principalName: cleanedName,
-          principalPhoto: cleanedPhoto,
-        });
-        await setDoc(doc(db, 'site_settings', 'school_info'), syncedPayload);
-      }
+      await onDataChanged();
 
       setTeacherFormMode('closed');
       setEditingTeacherId(null);
       setActionMsg('Data guru berhasil disimpan.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'site_teachers');
+      handleApiError(err, 'Gagal menyimpan data guru.');
     } finally {
       setSaving(false);
     }
@@ -984,12 +729,12 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   const handleDeleteTeacher = async (id: string) => {
     setSaving(true);
     try {
-      await ensureCollectionSeeded('site_teachers');
-      await deleteDoc(doc(db, 'site_teachers', id));
+      await deleteTeacherApi(id);
+      await onDataChanged();
       setConfirmDeleteKey(null);
       setActionMsg('Data guru berhasil dihapus.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `site_teachers/${id}`);
+      handleApiError(err, 'Gagal menghapus data guru.');
     } finally {
       setSaving(false);
     }
@@ -1029,25 +774,19 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
     setSaving(true);
     setActionMsg(null);
     try {
-      await ensureCollectionSeeded('site_gallery');
-      const id = galleryFormMode === 'edit' && editingGalleryId ? editingGalleryId : makeDocId('gal');
-      await setDoc(doc(db, 'site_gallery', id), {
+      await saveGalleryApi(galleryFormMode === 'edit' ? editingGalleryId : null, {
         title: galleryForm.title.trim().slice(0, 120),
         category: galleryForm.category,
         description: galleryForm.description.trim().slice(0, 300),
         image: galleryForm.image.trim().slice(0, 400) || HERO_IMAGES.main,
         alt: galleryForm.alt.trim().slice(0, 200) || galleryForm.title.trim().slice(0, 120),
-        sortOrder:
-          galleryFormMode === 'edit'
-            ? Math.max(0, galleryItems.findIndex((g) => g.id === id))
-            : galleryItems.length,
-        updatedAt: serverTimestamp(),
       });
+      await onDataChanged();
       setGalleryFormMode('closed');
       setEditingGalleryId(null);
       setActionMsg('Foto galeri berhasil disimpan.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'site_gallery');
+      handleApiError(err, 'Gagal menyimpan foto galeri.');
     } finally {
       setSaving(false);
     }
@@ -1056,12 +795,12 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   const handleDeleteGallery = async (id: string) => {
     setSaving(true);
     try {
-      await ensureCollectionSeeded('site_gallery');
-      await deleteDoc(doc(db, 'site_gallery', id));
+      await deleteGalleryApi(id);
+      await onDataChanged();
       setConfirmDeleteKey(null);
       setActionMsg('Foto galeri berhasil dihapus.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `site_gallery/${id}`);
+      handleApiError(err, 'Gagal menghapus foto galeri.');
     } finally {
       setSaving(false);
     }
@@ -1103,11 +842,6 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
     setSaving(true);
     setActionMsg(null);
     try {
-      await ensureCollectionSeeded('site_testimonials');
-      const id =
-        testimonialFormMode === 'edit' && editingTestimonialId
-          ? editingTestimonialId
-          : makeDocId('testi');
       const initials =
         testimonialForm.initials.trim() ||
         testimonialForm.parentName
@@ -1118,24 +852,20 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
           .join('') ||
         'OT';
 
-      await setDoc(doc(db, 'site_testimonials', id), {
+      await saveTestimonialApi(testimonialFormMode === 'edit' ? editingTestimonialId : null, {
         parentName: testimonialForm.parentName.trim().slice(0, 80),
         childInfo: testimonialForm.childInfo.trim().slice(0, 80) || 'Orang Tua Siswa',
         rating: Math.min(5, Math.max(1, Math.round(testimonialForm.rating))),
         quote: testimonialForm.quote.trim().slice(0, 400),
         avatarColor: testimonialForm.avatarColor || 'bg-[#fef08a]',
         initials: initials.slice(0, 4),
-        sortOrder:
-          testimonialFormMode === 'edit'
-            ? Math.max(0, testimonials.findIndex((t) => t.id === id))
-            : testimonials.length,
-        updatedAt: serverTimestamp(),
       });
+      await onDataChanged();
       setTestimonialFormMode('closed');
       setEditingTestimonialId(null);
       setActionMsg('Testimoni berhasil disimpan.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'site_testimonials');
+      handleApiError(err, 'Gagal menyimpan testimoni.');
     } finally {
       setSaving(false);
     }
@@ -1144,12 +874,12 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   const handleDeleteTestimonial = async (id: string) => {
     setSaving(true);
     try {
-      await ensureCollectionSeeded('site_testimonials');
-      await deleteDoc(doc(db, 'site_testimonials', id));
+      await deleteTestimonialApi(id);
+      await onDataChanged();
       setConfirmDeleteKey(null);
       setActionMsg('Testimoni berhasil dihapus.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `site_testimonials/${id}`);
+      handleApiError(err, 'Gagal menghapus testimoni.');
     } finally {
       setSaving(false);
     }
@@ -1177,22 +907,16 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
     setSaving(true);
     setActionMsg(null);
     try {
-      await ensureCollectionSeeded('site_faqs');
-      const id = faqFormMode === 'edit' && editingFaqId ? editingFaqId : makeDocId('faq');
-      await setDoc(doc(db, 'site_faqs', id), {
+      await saveFaqApi(faqFormMode === 'edit' ? editingFaqId : null, {
         question: faqForm.question.trim().slice(0, 200),
         answer: faqForm.answer.trim().slice(0, 600),
-        sortOrder:
-          faqFormMode === 'edit'
-            ? Math.max(0, faqs.findIndex((f) => f.id === id))
-            : faqs.length,
-        updatedAt: serverTimestamp(),
       });
+      await onDataChanged();
       setFaqFormMode('closed');
       setEditingFaqId(null);
       setActionMsg('FAQ berhasil disimpan.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'site_faqs');
+      handleApiError(err, 'Gagal menyimpan FAQ.');
     } finally {
       setSaving(false);
     }
@@ -1201,12 +925,12 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   const handleDeleteFaq = async (id: string) => {
     setSaving(true);
     try {
-      await ensureCollectionSeeded('site_faqs');
-      await deleteDoc(doc(db, 'site_faqs', id));
+      await deleteFaqApi(id);
+      await onDataChanged();
       setConfirmDeleteKey(null);
       setActionMsg('FAQ berhasil dihapus.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `site_faqs/${id}`);
+      handleApiError(err, 'Gagal menghapus FAQ.');
     } finally {
       setSaving(false);
     }
@@ -1246,28 +970,19 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
     setSaving(true);
     setActionMsg(null);
     try {
-      await ensureCollectionSeeded('site_advantages');
-      const id =
-        advantageFormMode === 'edit' && editingAdvantageId
-          ? editingAdvantageId
-          : makeDocId('adv');
-      await setDoc(doc(db, 'site_advantages', id), {
+      await saveAdvantageApi(advantageFormMode === 'edit' ? editingAdvantageId : null, {
         emoji: advantageForm.emoji.trim().slice(0, 16) || '✨',
         title: advantageForm.title.trim().slice(0, 100),
         description: advantageForm.description.trim().slice(0, 400),
         bgClass: advantageForm.bgClass || 'bg-[#fef9c3]',
         borderClass: advantageForm.borderClass || 'border-[#fde047]',
-        sortOrder:
-          advantageFormMode === 'edit'
-            ? Math.max(0, advantages.findIndex((a) => a.id === id))
-            : advantages.length,
-        updatedAt: serverTimestamp(),
       });
+      await onDataChanged();
       setAdvantageFormMode('closed');
       setEditingAdvantageId(null);
       setActionMsg('Kartu keunggulan berhasil disimpan.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'site_advantages');
+      handleApiError(err, 'Gagal menyimpan kartu keunggulan.');
     } finally {
       setSaving(false);
     }
@@ -1276,12 +991,12 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   const handleDeleteAdvantage = async (id: string) => {
     setSaving(true);
     try {
-      await ensureCollectionSeeded('site_advantages');
-      await deleteDoc(doc(db, 'site_advantages', id));
+      await deleteAdvantageApi(id);
+      await onDataChanged();
       setConfirmDeleteKey(null);
       setActionMsg('Kartu keunggulan berhasil dihapus.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `site_advantages/${id}`);
+      handleApiError(err, 'Gagal menghapus kartu keunggulan.');
     } finally {
       setSaving(false);
     }
@@ -1379,7 +1094,6 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
     setSaving(true);
     setActionMsg(null);
     try {
-      await ensureCollectionSeeded('site_programs');
       const code =
         programFormMode === 'edit' && editingProgramCode
           ? editingProgramCode
@@ -1395,7 +1109,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
       const registrationFee = programForm.registrationFee.trim().slice(0, 140);
       const monthlyFee = programForm.monthlyFee.trim().slice(0, 140);
 
-      await setDoc(doc(db, 'site_programs', code), {
+      await saveProgramApi(programFormMode === 'edit' ? editingProgramCode : null, {
         code,
         name: programForm.name.trim().slice(0, 100),
         ageRange: programForm.ageRange.trim().slice(0, 60),
@@ -1415,31 +1129,14 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
         summary: programForm.summary.trim().slice(0, 400),
         highlights,
         weeklySchedule,
-        sortOrder:
-          programFormMode === 'edit'
-            ? Math.max(0, programs.findIndex((p) => p.code === code))
-            : programs.length,
-        updatedAt: serverTimestamp(),
       });
-
-      // Sinkronkan juga kuota awal/kapasitas pada ppdb_stats
-      const currentQuota = quotas[code];
-      const nextEnrolled = Math.min(
-        maxPerClass,
-        currentQuota ? currentQuota.enrolledCount : defaultEnrolled
-      );
-      await setDoc(doc(db, 'ppdb_stats', code), {
-        programCode: code,
-        capacity: maxPerClass,
-        enrolledCount: nextEnrolled,
-        updatedAt: serverTimestamp(),
-      });
+      await onDataChanged();
 
       setProgramFormMode('closed');
       setEditingProgramCode(null);
       setActionMsg('Program & kelas berhasil disimpan.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'site_programs');
+      handleApiError(err, 'Gagal menyimpan program.');
     } finally {
       setSaving(false);
     }
@@ -1448,17 +1145,12 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   const handleDeleteProgram = async (code: string) => {
     setSaving(true);
     try {
-      await ensureCollectionSeeded('site_programs');
-      await deleteDoc(doc(db, 'site_programs', code));
-      try {
-        await deleteDoc(doc(db, 'ppdb_stats', code));
-      } catch {
-        // Ignore if stats document did not exist
-      }
+      await deleteProgramApi(code);
+      await onDataChanged();
       setConfirmDeleteKey(null);
       setActionMsg('Program berhasil dihapus.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `site_programs/${code}`);
+      handleApiError(err, 'Gagal menghapus program.');
     } finally {
       setSaving(false);
     }
@@ -1502,29 +1194,19 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
     setSaving(true);
     setActionMsg(null);
     try {
-      await ensureCollectionSeeded('site_timeline');
-      const id =
-        timelineFormMode === 'edit' && editingTimelineId
-          ? editingTimelineId
-          : makeDocId('step');
-      const existingIdx = timelineSteps.findIndex((s, idx) => (s.id || `step_${idx}`) === id);
-      await setDoc(doc(db, 'site_timeline', id), {
+      await saveTimelineApi(timelineFormMode === 'edit' ? editingTimelineId : null, {
         time: timelineForm.time.trim().slice(0, 20),
         emoji: timelineForm.emoji.trim().slice(0, 16) || '🌟',
         title: timelineForm.title.trim().slice(0, 100),
         description: timelineForm.description.trim().slice(0, 300),
         color: timelineForm.color || 'bg-[#fef08a] text-slate-900',
-        sortOrder:
-          timelineFormMode === 'edit' && existingIdx >= 0
-            ? existingIdx
-            : timelineSteps.length,
-        updatedAt: serverTimestamp(),
       });
+      await onDataChanged();
       setTimelineFormMode('closed');
       setEditingTimelineId(null);
       setActionMsg('Jadwal aktivitas harian berhasil disimpan.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'site_timeline');
+      handleApiError(err, 'Gagal menyimpan jadwal aktivitas harian.');
     } finally {
       setSaving(false);
     }
@@ -1533,12 +1215,12 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   const handleDeleteTimeline = async (id: string) => {
     setSaving(true);
     try {
-      await ensureCollectionSeeded('site_timeline');
-      await deleteDoc(doc(db, 'site_timeline', id));
+      await deleteTimelineApi(id);
+      await onDataChanged();
       setConfirmDeleteKey(null);
       setActionMsg('Langkah aktivitas harian berhasil dihapus.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `site_timeline/${id}`);
+      handleApiError(err, 'Gagal menghapus aktivitas harian.');
     } finally {
       setSaving(false);
     }
@@ -1627,7 +1309,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
                 Panel Admin Sekolah (Tambah · Edit · Hapus)
               </h3>
               <p className="text-xs font-semibold text-slate-600">
-                Kelola Pendaftar PPDB, Kuota Kelas, Guru, Galeri, Testimoni, dan FAQ di Firestore
+                Kelola Pendaftar PPDB, Kuota Kelas, Guru, Galeri, Testimoni, dan FAQ langsung di server sekolah
               </p>
             </div>
           </div>
@@ -1645,79 +1327,57 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
         <div className="p-5 sm:p-6 overflow-y-auto flex-1">
           {!authReady ? (
             <p className="text-center py-12 text-slate-600 font-semibold">
-              Memeriksa sesi autentikasi...
+              Memeriksa sesi admin...
             </p>
-          ) : !currentUser ? (
-            <div className="max-w-md mx-auto py-10 text-center">
+          ) : !isAdminUser ? (
+            <form onSubmit={handleAdminLogin} className="max-w-md mx-auto py-8 text-center">
               <div className="w-14 h-14 rounded-full bg-[#fef9c3] text-[#ea580c] flex items-center justify-center mx-auto mb-4">
                 <UserCheck className="w-7 h-7" />
               </div>
               <h4 className="font-display text-2xl font-bold text-slate-900 mb-2">
                 Masuk Sebagai Admin Sekolah
               </h4>
-              <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-                Silakan masuk dengan akun Google admin resmi sekolah untuk menambah, mengedit, atau
-                menghapus data PPDB dan konten website.
+              <p className="text-sm text-slate-600 mb-5 leading-relaxed">
+                Masukkan PIN Admin sekolah untuk menambah, mengedit, atau menghapus seluruh konten
+                website dan data pendaftar PPDB.
               </p>
-              {authError === 'UNAUTHORIZED_DOMAIN' ? (
-                <div className="mb-5 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-left text-xs text-rose-900 space-y-2">
-                  <p className="font-bold">
-                    Domain saat ini belum terdaftar di Authorized Domains Firebase Auth:
-                  </p>
-                  <p className="font-mono bg-white px-2.5 py-1.5 rounded-lg border border-rose-200 break-all select-all">
-                    {typeof window !== 'undefined' ? window.location.hostname : ''}
-                  </p>
-                  <p className="leading-relaxed">
-                    Jika login masih tertolak dari domain ini, buka{' '}
-                    <a
-                      href="https://console.firebase.google.com/project/careful-eon-jbcxw/authentication/settings"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline font-bold text-rose-800"
-                    >
-                      Firebase Console → Authentication → Settings → Authorized domains
-                    </a>{' '}
-                    lalu klik <strong>Add domain</strong> untuk menambahkan domain di atas.
-                  </p>
-                </div>
-              ) : (
-                authError && <p className="text-xs font-bold text-rose-600 mb-4">{authError}</p>
-              )}
-              <button
-                type="button"
-                onClick={handleAdminSignIn}
-                className="px-6 py-3.5 rounded-full bg-[#facc15] hover:bg-[#eab308] text-slate-900 font-display font-bold text-sm shadow-sm cursor-pointer"
-              >
-                Masuk dengan Google Admin
-              </button>
-            </div>
-          ) : !isAdminUser ? (
-            <div className="max-w-md mx-auto py-10 text-center">
-              <h4 className="font-display text-xl font-bold text-slate-900 mb-2">Akses Terbatas</h4>
-              <p className="text-sm text-slate-600 mb-4">
-                Akun <strong>{currentUser.email}</strong> tidak terdaftar sebagai Admin resmi{' '}
-                {schoolInfo.name}.
+              <div className="space-y-3 text-left">
+                <label className="block text-xs font-bold text-slate-700">
+                  PIN Admin Sekolah
+                </label>
+                <input
+                  type="password"
+                  value={adminPin}
+                  onChange={(e) => setAdminPin(e.target.value)}
+                  placeholder="Masukkan PIN Admin..."
+                  autoFocus
+                  className="w-full px-4 py-3 rounded-2xl border-2 border-amber-200 bg-[#fffbeb] text-slate-900 font-semibold text-sm focus:border-[#facc15] focus:outline-none"
+                />
+                {authError && <p className="text-xs font-bold text-rose-600">{authError}</p>}
+                <button
+                  type="submit"
+                  disabled={loggingIn}
+                  className="w-full px-6 py-3.5 rounded-full bg-[#facc15] hover:bg-[#eab308] text-slate-900 font-display font-bold text-sm shadow-sm cursor-pointer disabled:opacity-60"
+                >
+                  {loggingIn ? 'Memeriksa PIN...' : 'Masuk ke Panel Admin'}
+                </button>
+              </div>
+              <p className="mt-4 text-xs font-semibold text-slate-500">
+                PIN default awal: <code className="px-2 py-0.5 rounded bg-amber-100 text-slate-900 font-bold">admin123</code>{' '}
+                (dapat diubah di menu Identitas)
               </p>
-              <button
-                type="button"
-                onClick={() => signOut(auth)}
-                className="px-5 py-2.5 rounded-full bg-slate-900 text-white text-sm font-bold inline-flex items-center gap-2 cursor-pointer"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Keluar &amp; Ganti Akun</span>
-              </button>
-            </div>
+            </form>
           ) : (
             <div className="space-y-5">
               {/* Top Bar Admin Info */}
               <div className="flex flex-wrap items-center justify-between gap-3 bg-[#fffbeb] p-3.5 rounded-2xl border border-amber-200">
                 <div className="text-sm">
-                  <span className="text-slate-600">Login Admin: </span>
-                  <strong className="text-slate-900">{currentUser.email}</strong>
+                  <span className="text-slate-600">Status Admin: </span>
+                  <strong className="text-slate-900">Terhubung (Mode Edit Penuh)</strong>
                 </div>
                 <button
                   type="button"
-                  onClick={() => signOut(auth)}
+                  onClick={() => void handleAdminLogout()}
                   className="px-4 py-2 rounded-full bg-white border border-slate-300 text-slate-700 font-bold text-xs inline-flex items-center gap-1.5 hover:bg-slate-50 cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
@@ -2349,6 +2009,23 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
                         className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-amber-200 text-sm"
                       />
                     </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-[#fffbeb] border border-amber-200 space-y-2">
+                    <h4 className="font-display font-bold text-slate-900">
+                      Keamanan Panel Admin
+                    </h4>
+                    <label className="block text-xs font-bold text-slate-700">
+                      Ubah PIN Admin (opsional, min. 4 karakter — kosongkan jika tidak ingin mengubah)
+                    </label>
+                    <input
+                      type="password"
+                      maxLength={40}
+                      value={newAdminPasscode}
+                      onChange={(e) => setNewAdminPasscode(e.target.value)}
+                      placeholder="PIN Admin baru (opsional)"
+                      className="w-full sm:max-w-xs px-3.5 py-2.5 rounded-xl bg-white border border-amber-200 text-sm"
+                    />
                   </div>
 
                   <div className="flex justify-end">

@@ -8,8 +8,7 @@ import {
   MessageCircle,
   Pencil,
 } from 'lucide-react';
-import { doc, getDoc, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
-import { db, PPDB_VALIDATION } from '../lib/firebase';
+import { PPDB_VALIDATION, submitPpdbRegistration } from '../lib/api';
 import {
   buildWhatsappLink,
   type ProgramCode,
@@ -28,21 +27,8 @@ interface PpdbSectionProps {
   wantsTrialSignal: number;
   onOpenAdmin: () => void;
   onAdminAction?: (intent: AdminOpenIntent) => void;
+  onRegistered?: () => void;
   isAdminUser?: boolean;
-}
-
-function generateRegistrationCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let suffix = '';
-  for (let i = 0; i < 5; i += 1) {
-    suffix += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return `PPDB-2026-${suffix}`;
-}
-
-function generateDocId(): string {
-  const rand = Math.random().toString(36).slice(2, 8).replace(/[^a-z0-9]/g, 'x');
-  return `reg_${Date.now()}_${rand}`;
 }
 
 export const PpdbSection: React.FC<PpdbSectionProps> = ({
@@ -54,6 +40,7 @@ export const PpdbSection: React.FC<PpdbSectionProps> = ({
   wantsTrialSignal,
   onOpenAdmin,
   onAdminAction,
+  onRegistered,
   isAdminUser = false,
 }) => {
   const getProgramLabel = (code: ProgramCode): string => {
@@ -167,59 +154,23 @@ export const PpdbSection: React.FC<PpdbSectionProps> = ({
     }
 
     setSubmitting(true);
-    const registrationId = generateDocId();
-    const registrationCode = generateRegistrationCode();
-
-    const payload: Record<string, unknown> = {
-      registrationCode,
-      childName: trimmedChild,
-      birthDate,
-      gender,
-      programCode: selectedProgram,
-      fatherName: trimmedFather,
-      motherName: trimmedMother,
-      parentWhatsapp: trimmedWa,
-      address: trimmedAddress,
-      wantsTrial,
-      status: 'menunggu',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    };
-
-    if (trimmedPrevSchool.length > 0) {
-      payload.previousSchool = trimmedPrevSchool;
-    }
-    if (trimmedNotes.length > 0) {
-      payload.notes = trimmedNotes;
-    }
-
     try {
-      const quotaRef = doc(db, 'ppdb_stats', selectedProgram);
-      const quotaSnap = await getDoc(quotaRef);
-
-      if (quotaSnap.exists()) {
-        const qData = quotaSnap.data();
-        const currentEnrolled = Number(qData.enrolledCount || 0);
-        const cap = Number(qData.capacity || 20);
-
-        if (currentEnrolled < cap) {
-          const batch = writeBatch(db);
-          batch.set(doc(db, 'ppdb_registrations', registrationId), payload);
-          batch.update(quotaRef, {
-            enrolledCount: currentEnrolled + 1,
-            lastRegistrationId: registrationId,
-            updatedAt: serverTimestamp(),
-          });
-          await batch.commit();
-        } else {
-          await setDoc(doc(db, 'ppdb_registrations', registrationId), payload);
-        }
-      } else {
-        await setDoc(doc(db, 'ppdb_registrations', registrationId), payload);
-      }
+      const result = await submitPpdbRegistration({
+        childName: trimmedChild,
+        birthDate,
+        gender,
+        programCode: selectedProgram,
+        fatherName: trimmedFather,
+        motherName: trimmedMother,
+        parentWhatsapp: trimmedWa,
+        address: trimmedAddress,
+        previousSchool: trimmedPrevSchool || undefined,
+        notes: trimmedNotes || undefined,
+        wantsTrial,
+      });
 
       setSubmittedRecord({
-        registrationCode,
+        registrationCode: result.registrationCode,
         childName: trimmedChild,
         programName: getProgramLabel(selectedProgram),
         parentWhatsapp: trimmedWa,
@@ -235,10 +186,13 @@ export const PpdbSection: React.FC<PpdbSectionProps> = ({
       setAddress('');
       setPreviousSchool('');
       setNotes('');
+      onRegistered?.();
     } catch (err) {
       console.error('PPDB Submit Error:', err);
       setFormError(
-        'Maaf Bunda, gagal menyimpan ke database sekolah saat ini. Silakan periksa koneksi atau coba lagi.'
+        err instanceof Error
+          ? err.message
+          : 'Maaf Bunda, gagal menyimpan ke database sekolah saat ini. Silakan coba lagi.'
       );
     } finally {
       setSubmitting(false);
