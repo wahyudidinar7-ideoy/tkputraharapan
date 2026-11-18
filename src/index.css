@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Fredoka", ui-rounded, system-ui, sans-serif;
+  --font-sans: "Nunito", ui-sans-serif, system-ui, sans-serif;
+  --color-cream: #fffbeb;
+  --color-sunny: #facc15;
+  --color-tangerine: #fb923c;
+  --color-blossom: #f9a8d4;
+  --color-skywave: #7dd3fc;
+  --color-mintleaf: #86efac;
+  --color-lavender: #c4b5fd;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    scroll-padding-top: 5.5rem;
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: var(--font-display);
+  }
+
+  :focus-visible {
+    outline: 3px solid #fb923c;
+    outline-offset: 2px;
+  }
+}
+
+/* Subtle playful kindergarten background pattern (low opacity dots & stars) */
+.bg-tk-pattern {
+  background-color: #fffbeb;
+  background-image:
+    radial-gradient(rgba(250, 204, 21, 0.22) 2px, transparent 2px),
+    radial-gradient(rgba(125, 211, 252, 0.22) 2px, transparent 2px),
+    radial-gradient(rgba(249, 168, 212, 0.18) 1.5px, transparent 1.5px);
+  background-size: 64px 64px, 96px 96px, 48px 48px;
+  background-position: 0 0, 32px 32px, 16px 40px;
+}
+
+/* Gentle compositor-only floating animations */
+@keyframes float-slow {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes sway-gentle {
+  0%, 100% {
+    transform: rotate(-1.5deg) translateY(0px);
+  }
+  50% {
+    transform: rotate(1.5deg) translateY(-4px);
+  }
+}
+
+.animate-float-slow {
+  animation: float-slow 4.5s ease-in-out infinite;
+}
+
+.animate-sway-gentle {
+  animation: sway-gentle 5.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float-slow,
+  .animate-sway-gentle {
+    animation: none !important;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}

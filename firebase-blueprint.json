@@ -1,0 +1,375 @@
+{
+  "entities": {
+    "PpdbRegistration": {
+      "title": "PpdbRegistration",
+      "description": "Data pendaftaran PPDB online calon peserta didik baru TK Ceria Bangsa",
+      "type": "object",
+      "properties": {
+        "registrationCode": {
+          "type": "string",
+          "description": "Kode unik registrasi PPDB (contoh: PPDB-2026-4821)",
+          "minLength": 8,
+          "maxLength": 24,
+          "pattern": "^PPDB-[0-9]{4}-[A-Z0-9]{4,8}$"
+        },
+        "childName": {
+          "type": "string",
+          "description": "Nama lengkap calon siswa",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "birthDate": {
+          "type": "string",
+          "description": "Tanggal lahir anak format YYYY-MM-DD",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "gender": {
+          "type": "string",
+          "description": "Jenis kelamin anak",
+          "enum": ["Laki-laki", "Perempuan"]
+        },
+        "programCode": {
+          "type": "string",
+          "description": "Kode kelompok belajar yang dituju",
+          "minLength": 2,
+          "maxLength": 40,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fatherName": {
+          "type": "string",
+          "description": "Nama lengkap ayah",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "motherName": {
+          "type": "string",
+          "description": "Nama lengkap ibu",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "parentWhatsapp": {
+          "type": "string",
+          "description": "Nomor WhatsApp aktif orang tua",
+          "minLength": 9,
+          "maxLength": 18,
+          "pattern": "^[0-9+\\-\\s]{9,18}$"
+        },
+        "address": {
+          "type": "string",
+          "description": "Alamat tempat tinggal lengkap",
+          "minLength": 5,
+          "maxLength": 300
+        },
+        "previousSchool": {
+          "type": "string",
+          "description": "Asal PAUD/Playgroup sebelumnya (opsional)",
+          "maxLength": 120
+        },
+        "notes": {
+          "type": "string",
+          "description": "Catatan khusus, alergi makanan, atau pertanyaan orang tua (opsional)",
+          "maxLength": 400
+        },
+        "wantsTrial": {
+          "type": "boolean",
+          "description": "Apakah orang tua menginginkan jadwal Trial Gratis 1 Hari"
+        },
+        "status": {
+          "type": "string",
+          "description": "Status verifikasi pendaftaran oleh panitia TK",
+          "enum": ["menunggu", "jadwal_trial", "diterima", "batal"]
+        },
+        "trialDate": {
+          "type": "string",
+          "description": "Jadwal trial yang ditentukan panitia (opsional)",
+          "maxLength": 40
+        },
+        "adminNotes": {
+          "type": "string",
+          "description": "Catatan internal panitia PPDB (opsional)",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu server saat pendaftaran dibuat"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu server terakhir diperbarui"
+        }
+      },
+      "required": [
+        "registrationCode",
+        "childName",
+        "birthDate",
+        "gender",
+        "programCode",
+        "fatherName",
+        "motherName",
+        "parentWhatsapp",
+        "address",
+        "wantsTrial",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ProgramQuota": {
+      "title": "ProgramQuota",
+      "description": "Ringkasan kuota kursi publik per kelompok belajar tanpa PII",
+      "type": "object",
+      "properties": {
+        "programCode": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "capacity": {
+          "type": "integer",
+          "description": "Kapasitas maksimal kursi per kelompok"
+        },
+        "enrolledCount": {
+          "type": "integer",
+          "description": "Jumlah pendaftar terdata"
+        },
+        "lastRegistrationId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "ID dokumen pendaftaran terakhir untuk verifikasi atomik"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["programCode", "capacity", "enrolledCount", "updatedAt"]
+    },
+    "SiteTeacher": {
+      "title": "SiteTeacher",
+      "description": "Profil guru TK yang dapat ditambah, diubah, dan dihapus oleh admin",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "role": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "slogan": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "experience": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "photo": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "badgeColor": { "type": "string", "maxLength": 40 },
+        "initials": { "type": "string", "minLength": 1, "maxLength": 4 },
+        "sortOrder": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "role", "slogan", "experience", "photo", "badgeColor", "initials", "sortOrder", "updatedAt"]
+    },
+    "SiteGalleryItem": {
+      "title": "SiteGalleryItem",
+      "description": "Item foto galeri ceria TK yang dapat dikelola oleh admin",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "category": { "type": "string", "enum": ["Belajar", "Bermain", "Mengaji", "Pentas Seni", "Field Trip"] },
+        "description": { "type": "string", "minLength": 2, "maxLength": 300 },
+        "image": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "alt": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "sortOrder": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "category", "description", "image", "alt", "sortOrder", "updatedAt"]
+    },
+    "SiteTestimonial": {
+      "title": "SiteTestimonial",
+      "description": "Testimoni orang tua yang dikelola oleh admin",
+      "type": "object",
+      "properties": {
+        "parentName": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "childInfo": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "rating": { "type": "integer" },
+        "quote": { "type": "string", "minLength": 5, "maxLength": 400 },
+        "avatarColor": { "type": "string", "maxLength": 40 },
+        "initials": { "type": "string", "minLength": 1, "maxLength": 4 },
+        "sortOrder": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["parentName", "childInfo", "rating", "quote", "avatarColor", "initials", "sortOrder", "updatedAt"]
+    },
+    "SiteFaq": {
+      "title": "SiteFaq",
+      "description": "Daftar tanya jawab FAQ yang dikelola oleh admin",
+      "type": "object",
+      "properties": {
+        "question": { "type": "string", "minLength": 5, "maxLength": 200 },
+        "answer": { "type": "string", "minLength": 5, "maxLength": 600 },
+        "sortOrder": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["question", "answer", "sortOrder", "updatedAt"]
+    },
+    "SiteSchoolInfo": {
+      "title": "SiteSchoolInfo",
+      "description": "Identitas resmi TK, data kepala sekolah, kontak, jam operasional, dan statistik utama",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "shortTagline": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "npsn": { "type": "string", "minLength": 2, "maxLength": 30 },
+        "accreditation": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "curriculum": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "foundedYear": { "type": "integer" },
+        "experienceYears": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "studentCount": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "teacherCount": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "ratioText": { "type": "string", "minLength": 1, "maxLength": 30 },
+        "principalName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "principalQuote": { "type": "string", "minLength": 5, "maxLength": 600 },
+        "principalPhoto": { "type": "string", "maxLength": 400 },
+        "address": { "type": "string", "minLength": 5, "maxLength": 300 },
+        "whatsappRaw": { "type": "string", "minLength": 8, "maxLength": 20 },
+        "whatsappDisplay": { "type": "string", "minLength": 8, "maxLength": 25 },
+        "instagramHandle": { "type": "string", "maxLength": 60 },
+        "facebookName": { "type": "string", "maxLength": 80 },
+        "youtubeName": { "type": "string", "maxLength": 80 },
+        "email": { "type": "string", "maxLength": 120 },
+        "schoolHoursA": { "type": "string", "maxLength": 120 },
+        "schoolHoursB": { "type": "string", "maxLength": 120 },
+        "serviceHours": { "type": "string", "maxLength": 140 },
+        "ppdbDeadlineIso": { "type": "string", "maxLength": 40 },
+        "youtubeVideoId": { "type": "string", "maxLength": 60 },
+        "videoThumbnail": { "type": "string", "maxLength": 400 },
+        "mapsEmbedUrl": { "type": "string", "maxLength": 500 },
+        "heroBadge": { "type": "string", "maxLength": 120 },
+        "heroTitle": { "type": "string", "maxLength": 160 },
+        "heroSubtitle": { "type": "string", "maxLength": 400 },
+        "heroImage": { "type": "string", "maxLength": 400 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "npsn", "accreditation", "principalName", "address", "whatsappRaw", "whatsappDisplay", "updatedAt"]
+    },
+    "SiteAdvantage": {
+      "title": "SiteAdvantage",
+      "description": "Kartu keunggulan sekolah (Kenapa Pilih TK Kami) yang dikelola oleh admin",
+      "type": "object",
+      "properties": {
+        "emoji": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "title": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "description": { "type": "string", "minLength": 5, "maxLength": 400 },
+        "bgClass": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "borderClass": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "sortOrder": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["emoji", "title", "description", "bgClass", "borderClass", "sortOrder", "updatedAt"]
+    },
+    "SiteProgram": {
+      "title": "SiteProgram",
+      "description": "Program kelas TK (KB, Kelompok A, Kelompok B, atau kelas tambahan) yang dikelola oleh admin",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 2, "maxLength": 40, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "ageRange": { "type": "string", "minLength": 2, "maxLength": 60 },
+        "scheduleHours": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "maxPerClass": { "type": "integer" },
+        "defaultEnrolled": { "type": "integer" },
+        "feeSummary": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "registrationFee": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "monthlyFee": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "accentBg": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "accentBorder": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "buttonBg": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "emoji": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "summary": { "type": "string", "minLength": 5, "maxLength": 400 },
+        "highlights": { "type": "array", "description": "Daftar poin keunggulan kelas (1-10 item)" },
+        "weeklySchedule": { "type": "array", "description": "Jadwal mingguan Senin-Jumat (1-7 item)" },
+        "sortOrder": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "name", "ageRange", "scheduleHours", "maxPerClass", "defaultEnrolled", "feeSummary", "registrationFee", "monthlyFee", "accentBg", "accentBorder", "buttonBg", "emoji", "summary", "highlights", "weeklySchedule", "sortOrder", "updatedAt"]
+    },
+    "SiteTimelineStep": {
+      "title": "SiteTimelineStep",
+      "description": "Langkah rutinitas harian Sehari di TK Kami yang dikelola oleh admin",
+      "type": "object",
+      "properties": {
+        "time": { "type": "string", "minLength": 2, "maxLength": 20 },
+        "emoji": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "title": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "description": { "type": "string", "minLength": 5, "maxLength": 300 },
+        "color": { "type": "string", "minLength": 2, "maxLength": 60 },
+        "sortOrder": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["time", "emoji", "title", "description", "color", "sortOrder", "updatedAt"]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Daftar pengguna admin panitia PPDB sekolah",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "kepala_sekolah"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["email", "role", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/ppdb_registrations/{registrationId}": {
+      "schema": { "$ref": "#/entities/PpdbRegistration" },
+      "description": "Koleksi pendaftar PPDB online (berisi PII, hanya dapat dibaca dan dikelola oleh panitia/admin terverifikasi)"
+    },
+    "/ppdb_stats/{programCode}": {
+      "schema": { "$ref": "#/entities/ProgramQuota" },
+      "description": "Koleksi kuota kursi publik per kelompok belajar (bebas PII)"
+    },
+    "/site_settings/{settingId}": {
+      "schema": { "$ref": "#/entities/SiteSchoolInfo" },
+      "description": "Identitas sekolah, hero, video, dan nama kepala sekolah (publik baca, admin tulis)"
+    },
+    "/site_advantages/{advantageId}": {
+      "schema": { "$ref": "#/entities/SiteAdvantage" },
+      "description": "Koleksi kartu keunggulan sekolah (publik baca, admin tulis)"
+    },
+    "/site_programs/{programId}": {
+      "schema": { "$ref": "#/entities/SiteProgram" },
+      "description": "Koleksi program & kelas TK (publik baca, admin tulis)"
+    },
+    "/site_timeline/{stepId}": {
+      "schema": { "$ref": "#/entities/SiteTimelineStep" },
+      "description": "Koleksi jadwal rutinitas harian TK (publik baca, admin tulis)"
+    },
+    "/site_teachers/{teacherId}": {
+      "schema": { "$ref": "#/entities/SiteTeacher" },
+      "description": "Koleksi profil guru TK (publik baca, admin tulis)"
+    },
+    "/site_gallery/{itemId}": {
+      "schema": { "$ref": "#/entities/SiteGalleryItem" },
+      "description": "Koleksi foto galeri ceria TK (publik baca, admin tulis)"
+    },
+    "/site_testimonials/{testimonialId}": {
+      "schema": { "$ref": "#/entities/SiteTestimonial" },
+      "description": "Koleksi testimoni orang tua (publik baca, admin tulis)"
+    },
+    "/site_faqs/{faqId}": {
+      "schema": { "$ref": "#/entities/SiteFaq" },
+      "description": "Koleksi tanya jawab FAQ (publik baca, admin tulis)"
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Koleksi hak akses admin panitia PPDB sekolah"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "TK Ceria Bangsa",
+  "description": "Website resmi TK Ceria Bangsa — PAUD & Taman Kanak-Kanak ramah anak dengan kurikulum Merdeka PAUD dan sistem pendaftaran PPDB online terintegrasi database sekolah.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
